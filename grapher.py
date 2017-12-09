@@ -8,19 +8,21 @@ import numpy as np
 import pyqtgraph as pg
 import struct
 
-MAX_GRAPH_LEN = 1000
 PORT_FILE = '/dev/ttyACM0'
-RCV_TOUT = 0.5  ## read serial tout in ms
-UPD_TOUT = 100  ## update graph tout in ms
+MAX_GRAPH_LEN = 1000	## max number of point in graph
+AVG_SIZE = 10		## number of averaging points
+RCV_TOUT = 0.5		## read serial tout in ms
+UPD_TOUT = 100		## update graph tout in ms
+
 
 print "start"
-x = np.array([])
-y = np.array([])
-#mn = np.array([])
-#av1 = np.array([])
-#av2 = np.array([])
-#mx = np.array([])
+t_arr = np.array([])
+i_arr = np.array([])
+t_avg_arr = np.array([])
+i_avg_arr = np.array([])
 low_current = 0
+t_sum = 0
+i_sum = 0
 
 ## graph
 #QtGui.QApplication.setGraphicsSystem('raster')
@@ -32,107 +34,87 @@ win = pg.GraphicsWindow(title="uameter")
 win.resize(1000,600)
 win.setWindowTitle('uameter')
 pg.setConfigOptions(antialias=True)
-p = win.addPlot(title="Measured current")
-p.showGrid(x=True, y=True, alpha=0.5)
-wraw = p.plot(pen='b')
-#wmin = p.plot(pen='g')
-#wav1 = p.plot(pen='y')
-#wav2 = p.plot(pen='w')
-#wmax = p.plot(pen='r')
+i_plot = win.addPlot(title="Measured current")
+i_plot.showGrid(x=True, y=True, alpha=0.5)
+#i_plot.setLogMode(x=None, y=True)
+i_plot.setLabel("bottom", text="Time, ms")
+i_plot.setLabel("left", text="Current, uA")
+i_raw = i_plot.plot(pen='y')
 
 
 def recv():
-    global x, y, mn, mx, av1, av2
-    tm=""
-    tm += ser.read(1)
-    tm += ser.read(1)
-    tm += ser.read(1)
-    tm += ser.read(1)
-    m = struct.unpack("<I", tm)[0]
+    global t_arr, i_arr, t_avg_arr, i_avg_arr, t_sum, i_sum
+    t_tmp = ""
+    t_tmp += ser.read(1)
+    t_tmp += ser.read(1)
+    t_tmp += ser.read(1)
+    t_tmp += ser.read(1)
+    t = struct.unpack("<I", t_tmp)[0]
     ## < - little endial
     ## I - unsigned int
 
-    tw=""
-    tw += ser.read(1)
-    tw += ser.read(1)
-    tw += ser.read(1)
-    tw += ser.read(1)
-    w = struct.unpack("<I", tw)[0]
-    #print("m="+str(m)+" w="+str(w))
-    if len(x) > 0 and m < x[-1]:
-        print("reset data! MCU has been restarted!")
-        x=[]
-        y=[]
-#        mn=[]
-#        mx=[]
-#        av1=[]
-#        av2=[]
+    i_tmp = ""
+    i_tmp += ser.read(1)
+    i_tmp += ser.read(1)
+    i_tmp += ser.read(1)
+    i_tmp += ser.read(1)
+    i = struct.unpack("<I", i_tmp)[0]
+    #print("t="+str(t)+" i="+str(i))
 
     ## if 15th bit is set, then low current mode is active
-    if w > 32768:
-        w = w - 32768
+    if i >= 32768:
+        i = i - 32768
         low_current = 1
-	p.setTitle("uA")
 	## TODO: scale w for low current
+	i = i * 1
     else:
         low_current = 0
-	p.setTitle("mA")
 	## TODO: scale w for high current
+	i = i * 1000
 
-    x=np.append(x, m)
-    y=np.append(y, w)
-#    av1d=10
-#    av2d=100
-#    if len(y) < av1d:
-#        mn=np.append(mn, w)
-#        mx=np.append(mx, w)
-#        av1=np.append(av1, w)
-#    else:
-#        av1t=0
-#        mnt=y[-1]
-#        mxt=y[-1]
-#        for i in range(-1, -1*av1d-1, -1):
-#            av1t=av1t+y[i]
-#            if y[i] < mnt:
-#                mnt=y[i]
-#            if y[i] > mxt:
-#                mxt=y[i]
-#
-#        av1t=round((av1t-mnt-mxt)/(av1d-2))
-#        av1=np.append(av1, av1t)
-#        mn=np.append(mn, mnt)
-#        mx=np.append(mx, mxt)
-#
-#    if len(y) < av2d:
-#        av2=np.append(av2, w)
-#    else:
-#        av2t=0
-#        for i in range(-1, -1*av2d-1, -1):
-#            av2t=av2t+y[i]
-#        av2t=round(av2t/av2d)
-#        av2=np.append(av2, av2t)
+    t_avg_arr = np.append(t_avg_arr, t)
+    i_avg_arr = np.append(i_avg_arr, i)
 
-## limit graph length
-    if len(y) > MAX_GRAPH_LEN:
-       x=np.delete(x, 0)
-       y=np.delete(y, 0)
-#       mn=np.delete(mn, 0)
-#       mx=np.delete(mx, 0)
-#       av1=np.delete(av1, 0)
-#       av2=np.delete(av2, 0)
+    if len(t_avg_arr) >= AVG_SIZE:
+        #print("average")
+        for a in range(0, len(t_avg_arr)):
+            t_sum += t_avg_arr[a]
+            i_sum += i_avg_arr[a]
+
+        t = int(t_sum / AVG_SIZE)
+        i = int(i_sum / AVG_SIZE)
+        t_arr = np.append(t_arr, t)
+        i_arr = np.append(i_arr, i)
+        #print("t="+str(t)+", i="+str(i))
+        t_avg_arr = []
+        i_avg_arr = []
+        t_sum = 0
+        i_sum = 0
+
+    if len(t_arr) > 0 and t < t_arr[-1]:
+        print("reset data! MCU has been restarted!")
+        t_arr = []
+        i_arr = []
+
 
 def upd():
-    wraw.setData(x, y)
-#    wmin.setData(x, mn)
-#    wmax.setData(x, mx)
-#    wav1.setData(x, av1)
-#    wav2.setData(x, av2)
+    global t_arr, i_arr
+
+    ## limit graph length
+    while len(t_arr) > MAX_GRAPH_LEN:
+        #print("truncate")
+        t_arr = np.delete(t_arr, 0)
+        i_arr = np.delete(i_arr, 0)
+
+    ## update dataset
+    #print("update")
+    i_raw.setData(t_arr, i_arr)
 
 ## Open serial
 ser = serial.Serial(
         port=PORT_FILE,
         baudrate=115200,
- 	timeout=None,
+	timeout=None,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
         bytesize=serial.EIGHTBITS
