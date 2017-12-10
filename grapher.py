@@ -13,6 +13,10 @@ MAX_GRAPH_LEN = 1000	## max number of point in graph
 AVG_SIZE = 10		## number of averaging points
 RCV_TOUT = 0.5		## read serial tout in ms
 UPD_TOUT = 100		## update graph tout in ms
+MA_OFFSET = 0
+MA_SCALE = 1
+UA_OFFSET = 0
+UA_SCALE = 1
 
 
 print "start"
@@ -65,12 +69,12 @@ def recv():
     if i >= 32768:
         i = i - 32768
         low_current = 1
-	## TODO: scale w for low current
-	i = i * 1
+	i = i * UA_SCALE
+	i = i + UA_OFFSET
     else:
         low_current = 0
-	## TODO: scale w for high current
-	i = i * 1000
+	i = i * MA_SCALE
+	I = i + MA_OFFSET
 
     t_avg_arr = np.append(t_avg_arr, t)
     i_avg_arr = np.append(i_avg_arr, i)
